@@ -1,5 +1,6 @@
 'use strict';
 importScripts('https://cdn.jsdelivr.net/pyodide/v0.27.7/full/pyodide.js');
-let py;
-async function init(){try{py=await loadPyodide({indexURL:'https://cdn.jsdelivr.net/pyodide/v0.27.7/full/'});py.setStdout({batched:text=>postMessage({type:'stdout',text})});py.setStderr({batched:text=>postMessage({type:'stdout',text})});postMessage({type:'ready'})}catch(e){postMessage({type:'error',text:'Не удалось загрузить Python: '+e.message})}}
-onmessage=async e=>{let globals;try{globals=py.toPy({});await py.runPythonAsync(e.data.code,{globals});postMessage({type:'done'})}catch(error){postMessage({type:'error',text:String(error)})}finally{if(globals)globals.destroy()}};init();
+let py,outputLines=0;
+function emit(text){if(outputLines++<150)postMessage({type:'stdout',text:String(text).slice(0,3000)});else if(outputLines===151)postMessage({type:'stdout',text:'… Вывод ограничен 150 строками.'})}
+async function init(){try{py=await loadPyodide({indexURL:'https://cdn.jsdelivr.net/pyodide/v0.27.7/full/'});py.setStdout({batched:emit});py.setStderr({batched:emit});postMessage({type:'ready'})}catch(e){postMessage({type:'error',text:'Не удалось загрузить Python: '+e.message})}}
+onmessage=async e=>{let globals,result,actionProxy;outputLines=0;try{globals=py.toPy({});if(e.data.prelude)await py.runPythonAsync(e.data.prelude,{globals});result=await py.runPythonAsync(e.data.code,{globals});if(result&&typeof result.destroy==='function')result.destroy();if(e.data.tests)await py.runPythonAsync(e.data.tests,{globals});let actions;if(e.data.robot){actionProxy=globals.get('_robot_actions');actions=actionProxy.toJs()}postMessage({type:'done',actions})}catch(error){postMessage({type:'error',text:String(error)})}finally{if(actionProxy)actionProxy.destroy();if(globals)globals.destroy()}};init();
